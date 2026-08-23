@@ -44,14 +44,24 @@ export default async function HomePage() {
               </Link>
             </div>
           </div>
-          <div className="fade-up grid grid-cols-2 gap-4">
-            {featured.slice(0, 4).map((p, i) =>
-              p.images[0] ? (
-                <Link key={p.id} href={`/product/${p.slug}`} className={`relative overflow-hidden rounded-2xl border border-gold/25 ${i % 2 ? "mt-8" : ""}`}>
-                  <Image src={p.images[0].url} alt={p.name} width={300} height={375} className="h-auto w-full object-cover" />
-                </Link>
-              ) : null,
-            )}
+          <div className="fade-up flex flex-col items-center">
+            <Image
+              src="/brand/logo.jpg"
+              alt="Kanha Closet — logo"
+              width={480}
+              height={480}
+              priority
+              className="w-64 rounded-full border-4 border-gold/70 shadow-2xl shadow-gold/25 sm:w-72 md:w-80"
+            />
+            <div className="mt-6 flex items-center gap-3">
+              {featured.slice(0, 3).map((p) =>
+                p.images[0] ? (
+                  <Link key={p.id} href={`/product/${p.slug}`} className="relative h-20 w-16 overflow-hidden rounded-xl border border-gold/30 transition-transform hover:-translate-y-1 sm:h-24 sm:w-20">
+                    <Image src={p.images[0].url} alt={p.name} fill sizes="80px" className="object-cover" />
+                  </Link>
+                ) : null,
+              )}
+            </div>
           </div>
         </div>
       </section>
