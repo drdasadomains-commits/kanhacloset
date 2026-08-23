@@ -1,0 +1,261 @@
+// Kanha Closet — deity dress ecommerce data model
+// Money is stored in paise (integers) to avoid float errors.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────── Catalog ───────────
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+  image       String?
+  sortOrder   Int        @default(0)
+  isActive    Boolean    @default(true)
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[] @relation("CategoryTree")
+  products    Product[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([parentId])
+}
+
+model Product {
+  id               String         @id @default(cuid())
+  name             String
+  slug             String         @unique
+  shortDescription String?
+  description      String?
+  categoryId       String
+  category         Category       @relation(fields: [categoryId], references: [id])
+  brand            String?
+  sku              String?
+  price            Int // paise
+  compareAtPrice   Int? // paise
+  stockQuantity    Int            @default(0)
+  lowStockThreshold Int           @default(5)
+  status           String         @default("DRAFT") // DRAFT | ACTIVE | ARCHIVED
+  featured         Boolean        @default(false)
+  bestseller       Boolean        @default(false)
+  newArrival       Boolean        @default(false)
+  festival         String? // e.g. "janmashtami", "diwali", "radhashtami"
+  seoTitle         String?
+  seoDescription   String?
+  images           ProductImage[]
+  variants         Variant[]
+  reviews          Review[]
+  orderItems       OrderItem[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([categoryId])
+  @@index([status])
+  @@index([featured])
+  @@index([bestseller])
+  @@index([newArrival])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  altText   String?
+  sortOrder Int     @default(0)
+  isPrimary Boolean @default(false)
+
+  @@index([productId])
+}
+
+model Variant {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name          String
+  sku           String?
+  size          String?
+  color         String?
+  price         Int? // paise; null = inherit product price
+  stockQuantity Int      @default(0)
+  image         String?
+  createdAt     DateTime @default(now())
+  orderItems    OrderItem[]
+
+  @@index([productId])
+}
+
+// ─────────── Customers & auth ───────────
+
+model Customer {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String?
+  name         String?
+  phone        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  addresses    Address[]
+  orders       Order[]
+  reviews      Review[]
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  fullName   String
+  phone      String
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  pincode    String
+  country    String   @default("India")
+  isDefault  Boolean  @default(false)
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         String   @default("ADMIN") // ADMIN | SUPERADMIN
+  createdAt    DateTime @default(now())
+}
+
+// ─────────── Orders & payments ───────────
+
+model Order {
+  id                String        @id @default(cuid())
+  orderNumber       String        @unique
+  customerId        String?
+  customer          Customer?     @relation(fields: [customerId], references: [id])
+  // Guest checkout snapshot
+  customerName      String
+  customerPhone     String
+  customerEmail     String
+  shippingAddress   Json // {fullName, phone, line1, line2, city, state, pincode, country}
+  shippingMethod    String        @default("STANDARD") // STANDARD | EXPRESS
+  trackingNumber    String?
+  subtotal          Int // paise
+  shipping          Int // paise
+  discount          Int           @default(0) // paise
+  total             Int // paise
+  couponCode        String?
+  status            String        @default("PENDING") // PENDING CONFIRMED PROCESSING PACKED SHIPPED DELIVERED CANCELLED RETURN_REQUESTED RETURNED REFUNDED
+  paymentStatus     String        @default("PENDING") // PENDING AUTHORIZED PAID FAILED REFUNDED PARTIALLY_REFUNDED CANCELLED
+  internalNotes     String?
+  items             OrderItem[]
+  payments          Payment[]
+  webhookEvents     WebhookEvent[]
+  statusHistory     OrderStatusHistory[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([customerId])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id           String   @id @default(cuid())
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id])
+  variantId    String?
+  variant      Variant? @relation(fields: [variantId], references: [id])
+  productName  String
+  variantName  String?
+  unitPrice    Int // paise, snapshot at purchase time
+  quantity     Int
+  lineTotal    Int // paise
+
+  @@index([orderId])
+}
+
+model Payment {
+  id              String   @id @default(cuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  razorpayOrderId String?
+  razorpayPaymentId String?
+  razorpaySignature String?
+  amount          Int // paise
+  currency        String   @default("INR")
+  status          String   @default("CREATED") // CREATED AUTHORIZED CAPTURED FAILED REFUNDED PARTIALLY_REFUNDED
+  method          String? // upi | card | netbanking | wallet
+  failureReason   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([razorpayPaymentId])
+  @@index([orderId])
+  @@index([razorpayOrderId])
+}
+
+// Idempotent webhook processing: one row per Razorpay event id
+model WebhookEvent {
+  id           String   @id @default(cuid())
+  eventId      String   @unique
+  eventType    String
+  payload      Json
+  processedAt  DateTime @default(now())
+  orderId      String?
+  order        Order?   @relation(fields: [orderId], references: [id])
+}
+
+model OrderStatusHistory {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus String?
+  toStatus  String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model Coupon {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  type           String   // PERCENT | FIXED
+  value          Int // percent (1-100) or paise
+  minOrderValue  Int      @default(0) // paise
+  maxDiscount    Int? // paise cap for PERCENT
+  startsAt       DateTime
+  endsAt         DateTime?
+  usageLimit     Int? // total redemptions
+  perCustomerLimit Int?
+  usedCount      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customerId String?
+  customer  Customer? @relation(fields: [customerId], references: [id])
+  authorName String
+  rating    Int // 1-5
+  title     String?
+  body      String
+  isApproved Boolean @default(false) // only approved reviews display
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
